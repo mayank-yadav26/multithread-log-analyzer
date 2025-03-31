@@ -11,11 +11,19 @@ public class FileDownloadService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
-    public String getFilePath(String fileName) throws IOException {
-        File file = new File(uploadDir, fileName);
-        if (!file.exists()) {
-            throw new IOException("File not found: " + fileName);
+
+    public String getGeneratedCsvFilePath(String fileName) {
+        String directoryPath = uploadDir + File.separator + fileName;
+        File dir = new File(directoryPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            throw new RuntimeException("Directory not found: " + directoryPath);
         }
-        return file.getAbsolutePath();
+
+        for (File file : dir.listFiles()) {
+            if (file.getName().endsWith(".csv")) {
+                return file.getAbsolutePath();
+            }
+        }
+        throw new RuntimeException("No CSV file found in directory: " + directoryPath);
     }
 }

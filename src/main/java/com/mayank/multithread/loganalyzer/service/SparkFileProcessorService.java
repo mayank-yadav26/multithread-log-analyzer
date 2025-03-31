@@ -75,47 +75,50 @@ public class SparkFileProcessorService {
         return result.toString();
     }
 
-    private static Dataset<LogEntry> parseLogEntries(Dataset<String> logData) {
-        // Parse log entries
-        Dataset<LogEntry> parsedLogs = logData.flatMap(new FlatMapFunction<String, LogEntry>() {
-            private static final long serialVersionUID = 1L;
-            private LogEntry previousEntry = null;
-            long lineNumber = 0;
-
-            @Override
-            public Iterator<LogEntry> call(String line) {
-                lineNumber++;
-                List<LogEntry> entries = new ArrayList<>();
-                if (line.startsWith("[")) {
-                    if (previousEntry != null) {
-                        entries.add(previousEntry);
-                    }
-
-                    String[] parts = line.split(" ", 7);
-                    try {
-                        LogEntry entry = new LogEntry();
-                        entry.setLineNumber(lineNumber);
-                        entry.setTimestamp(parts[0].substring(1) + " " + parts[1].substring(0, parts[1].length()));
-                        entry.setZone(parts[2].substring(0, parts[2].length() - 1));
-                        entry.setThread(parts[3].substring(1, parts[3].length() - 1));
-                        entry.setIp(parts[4].substring(1, parts[4].length() - 1));
-                        entry.setAccountId(parts[5].substring(1, parts[5].length() - 1));
-                        entry.setLogLevel((parts[6].substring(0, 5)).trim());
-                        entry.setClassName(parts[6].split(":", 2)[0].substring(6).trim());
-                        entry.setClassLineNumber(parts[6].split(":", 2)[1].split(" - ", 2)[0].trim());
-                        entry.setMessage(parts[6].split(" - ", 2)[1].replaceAll("\"", ""));
-                        previousEntry = entry;
-                    } catch (Exception e) {
-                        // Handle any parsing exceptions if needed
-                        System.err.println("Error parsing line: " + line);
-                    }
-                } else if (previousEntry != null) {
-                    previousEntry.setMessage(previousEntry.getMessage() + "\n" + line.replaceAll("\"", ""));
-                }
-                return entries.iterator();
-            }
-        }, Encoders.bean(LogEntry.class));
+    private Dataset<LogEntry> parseLogEntries(Dataset<String> logData) {
+        // Use a static inner class for the FlatMapFunction to ensure it is serializable
+        Dataset<LogEntry> parsedLogs = logData.flatMap(new LogEntryFlatMapFunction(), Encoders.bean(LogEntry.class));
         return parsedLogs;
+    }
+
+    // Static inner class for FlatMapFunction to ensure it is serializable
+    private static class LogEntryFlatMapFunction implements FlatMapFunction<String, LogEntry> {
+        private static final long serialVersionUID = 1L;
+        private LogEntry previousEntry = null;
+        private long lineNumber = 0;
+
+        @Override
+        public Iterator<LogEntry> call(String line) {
+            lineNumber++;
+            List<LogEntry> entries = new ArrayList<>();
+            if (line.startsWith("[")) {
+                if (previousEntry != null) {
+                    entries.add(previousEntry);
+                }
+
+                String[] parts = line.split(" ", 7);
+                try {
+                    LogEntry entry = new LogEntry();
+                    entry.setLineNumber(lineNumber);
+                    entry.setTimestamp(parts[0].substring(1) + " " + parts[1].substring(0, parts[1].length()));
+                    entry.setZone(parts[2].substring(0, parts[2].length() - 1));
+                    entry.setThread(parts[3].substring(1, parts[3].length() - 1));
+                    entry.setIp(parts[4].substring(1, parts[4].length() - 1));
+                    entry.setAccountId(parts[5].substring(1, parts[5].length() - 1));
+                    entry.setLogLevel((parts[6].substring(0, 5)).trim());
+                    entry.setClassName(parts[6].split(":", 2)[0].substring(6).trim());
+                    entry.setClassLineNumber(parts[6].split(":", 2)[1].split(" - ", 2)[0].trim());
+                    entry.setMessage(parts[6].split(" - ", 2)[1].replaceAll("\"", ""));
+                    previousEntry = entry;
+                } catch (Exception e) {
+                    // Handle any parsing exceptions if needed
+                    System.err.println("Error parsing line: " + line);
+                }
+            } else if (previousEntry != null) {
+                previousEntry.setMessage(previousEntry.getMessage() + "\n" + line.replaceAll("\"", ""));
+            }
+            return entries.iterator();
+        }
     }
 
     /**
@@ -124,7 +127,7 @@ public class SparkFileProcessorService {
      * @param parsedLogsWithTime
      * @return
      */
-    private static String maxTimeTakingThread(Dataset<Row> parsedLogsWithTime) {
+    private String maxTimeTakingThread(Dataset<Row> parsedLogsWithTime) {
         // Group by thread and sum the total time difference for each thread
         Dataset<Row> totalTimeDiffByThread = parsedLogsWithTime
                 .groupBy("thread")
@@ -153,7 +156,7 @@ public class SparkFileProcessorService {
      * @param parsedLogsWithTime
      * @return
      */
-    private static String maxNumberOfTimesSameLogMessage(Dataset<Row> parsedLogsWithTime) {
+    private String maxNumberOfTimesSameLogMessage(Dataset<Row> parsedLogsWithTime) {
         // Find the maximum number of times the same log message is printed
         Dataset<Row> maxLogMessageCount = parsedLogsWithTime.groupBy("message")
                 .agg(functions.count("message").alias("count"))
@@ -168,7 +171,7 @@ public class SparkFileProcessorService {
     }
 
     // max time a thread stopped at a line: line number & time:
-    private static String maxTimeThreadStopped(Dataset<Row> parsedLogsWithTime) {
+    private String maxTimeThreadStopped(Dataset<Row> parsedLogsWithTime) {
         // Find the row with the maximum time difference
         Dataset<Row> maxTimeDiffRow = parsedLogsWithTime
                 .orderBy(functions.col("time_diff_ms").desc()) // Sort descending to get the max first
@@ -198,7 +201,7 @@ public class SparkFileProcessorService {
      * @param filePath
      * @return
      */
-    private static Dataset<Row> calculateThreadTimeDiffForEachThread(Dataset<LogEntry> parsedLogs, SparkSession spark,
+    private Dataset<Row> calculateThreadTimeDiffForEachThread(Dataset<LogEntry> parsedLogs, SparkSession spark,
             String filePath) {
         // Convert timestamp to a proper format
         Dataset<Row> parsedLogsWithTime = parsedLogs.withColumn("timestamp_initial", parsedLogs.col("timestamp"))
@@ -230,7 +233,7 @@ public class SparkFileProcessorService {
 
         // Save the result to a file with headers and quote all fields
         result.write().option("header", "true").option("quoteAll", "true").format("csv")
-                .save(FileUtils.getFileNameWithoutExtension(filePath) + FileUtils.getCurrentFormattedDateTime());
+                .save(FileUtils.getFileNameWithoutExtension(filePath));
 
         return parsedLogsWithTime;
     }
