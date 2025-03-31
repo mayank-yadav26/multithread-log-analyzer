@@ -1,7 +1,5 @@
 package com.mayank.multithread.loganalyzer.service;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -18,7 +16,8 @@ import org.apache.spark.sql.expressions.WindowSpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.mayank.multithread.dto.LogEntry;
+import com.mayank.multithread.loganalyzer.dto.LogEntry;
+import com.mayank.multithread.loganalyzer.utils.FileUtils;
 
 @Service("sparkFileProcessorService")
 public class SparkFileProcessorService {
@@ -110,7 +109,8 @@ public class SparkFileProcessorService {
         return parsedLogs;
     }
 
-    private static void calculateThreadTimeDiffForEachThread(Dataset<LogEntry> parsedLogs, SparkSession spark, String filePath) {
+    private static void calculateThreadTimeDiffForEachThread(Dataset<LogEntry> parsedLogs, SparkSession spark,
+            String filePath) {
         // Convert timestamp to a proper format
         Dataset<Row> parsedLogsWithTime = parsedLogs.withColumn("timestamp_initial", parsedLogs.col("timestamp"))
                 .withColumn("timestamp", functions.to_timestamp(parsedLogs.col("timestamp"), "MM-dd-yy HH:mm:ss:SSS"));
@@ -141,25 +141,8 @@ public class SparkFileProcessorService {
 
         // Save the result to a file with headers and quote all fields
         result.write().option("header", "true").option("quoteAll", "true").format("csv")
-                .save(removeExtension(filePath) + getFormattedNow());
+                .save(FileUtils.getFileNameWithoutExtension(filePath) + FileUtils.getCurrentFormattedDateTime());
 
     }
 
-    public static String removeExtension(String filename) {
-        if (filename == null || filename.isEmpty()) {
-            return filename;
-        }
-        int lastDotIndex = filename.lastIndexOf('.');
-        if (lastDotIndex == -1) {
-            return filename; // No extension found
-        }
-        return filename.substring(0, lastDotIndex);
-    }
-
-	private static String getFormattedNow() {
-		// Get the current timestamp
-		LocalDateTime now = LocalDateTime.now();
-		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-		return now.format(formatter);
-	}
 }

@@ -7,7 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 
-@Service
+@Service("fileUploadService")
 public class FileUploadService {
 
     @Value("${file.upload-dir}")
@@ -23,12 +23,5 @@ public class FileUploadService {
         file.transferTo(new File(filePath));
 
         return filePath;
-    }
-    public String getFilePath(String fileName) throws IOException {
-        File file = new File(uploadDir, fileName);
-        if (!file.exists()) {
-            throw new IOException("File not found: " + fileName);
-        }
-        return file.getAbsolutePath();
     }
 }

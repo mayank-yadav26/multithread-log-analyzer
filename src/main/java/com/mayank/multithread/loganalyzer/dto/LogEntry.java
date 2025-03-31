@@ -1,4 +1,4 @@
-package com.mayank.multithread.dto;
+package com.mayank.multithread.loganalyzer.dto;
 
 import lombok.Data;
 
