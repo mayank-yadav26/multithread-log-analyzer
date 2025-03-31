@@ -88,8 +88,8 @@ public class SparkFileProcessorService {
                         entry.setLineNumber(lineNumber);
                         entry.setTimestamp(parts[0].substring(1) + " " + parts[1].substring(0, parts[1].length()));
                         entry.setZone(parts[2].substring(0, parts[2].length() - 1));
-                        entry.setIp(parts[3].substring(1, parts[3].length() - 1));
-                        entry.setThread(parts[4].substring(1, parts[4].length() - 1));
+                        entry.setThread(parts[3].substring(1, parts[3].length() - 1));
+                        entry.setIp(parts[4].substring(1, parts[4].length() - 1));
                         entry.setAccountId(parts[5].substring(1, parts[5].length() - 1));
                         entry.setLogLevel((parts[6].substring(0, 5)).trim());
                         entry.setClassName(parts[6].split(":", 2)[0].substring(6).trim());
