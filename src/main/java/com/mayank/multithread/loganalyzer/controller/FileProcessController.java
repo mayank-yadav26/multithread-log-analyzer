@@ -6,8 +6,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.mayank.multithread.loganalyzer.dto.LogProcessingResponse;
 import com.mayank.multithread.loganalyzer.service.SparkFileProcessorService;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @RestController
 @RequestMapping("/api/files")
 public class FileProcessController {
@@ -18,12 +22,13 @@ public class FileProcessController {
     }
 
     @GetMapping("/process")
-    public ResponseEntity<String> processLogFile(@RequestParam("fileName") String fileName) {
+    public ResponseEntity<LogProcessingResponse> processLogFile(@RequestParam("fileName") String fileName) {
+        log.debug("Inside processLogFile method: filename: {}", fileName);
         try {
-            String result = sparkFileProcessorService.processLogFile(fileName);
-            return ResponseEntity.ok(result);
+            LogProcessingResponse response = sparkFileProcessorService.processLogFile(fileName);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Failed to process file: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(new LogProcessingResponse(fileName, 0, null, null, null, "Error processing file: " + e.getMessage(), null));
         }
     }
 }

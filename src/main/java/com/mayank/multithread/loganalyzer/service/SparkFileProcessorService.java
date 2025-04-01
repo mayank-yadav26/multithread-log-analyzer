@@ -17,8 +17,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.mayank.multithread.loganalyzer.dto.LogEntry;
+import com.mayank.multithread.loganalyzer.dto.LogProcessingResponse;
 import com.mayank.multithread.loganalyzer.utils.FileUtils;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Service("sparkFileProcessorService")
 public class SparkFileProcessorService {
     @Value("${file.upload-dir}")
@@ -37,8 +41,9 @@ public class SparkFileProcessorService {
                 .getOrCreate();
     }
 
-    public String processLogFile(String fileName) {
-        StringBuilder result = new StringBuilder();
+    public LogProcessingResponse processLogFile(String fileName) {
+        log.info("Processing log file: " + fileName);
+        LogProcessingResponse response = new LogProcessingResponse();
         try {
             String filePath = uploadDir + "/" + fileName;
 
@@ -60,22 +65,38 @@ public class SparkFileProcessorService {
 
             Dataset<Row> parsedLogsWithTime = calculateThreadTimeDiffForEachThread(parsedLogs, sparkSession, filePath);
 
-            // Perform some processing on the log data
-            // For example, count the number of lines in the log file
+            // Process the log file using Apache Spark
             long lineCount = logData.count();
-            result.append("Number of lines in ").append(fileName).append(": ").append(lineCount).append("\n");
-            result.append(maxTimeTakingThread(parsedLogsWithTime)).append("\n");
-            result.append(maxNumberOfTimesSameLogMessage(parsedLogsWithTime)).append("\n");
-            result.append(maxTimeThreadStopped(parsedLogsWithTime)).append("\n");
-            result.append("Log file processed successfully.");
+            String maxThreadExecution = maxTimeTakingThread(parsedLogsWithTime);
+            String mostFrequentMessage = maxNumberOfTimesSameLogMessage(parsedLogsWithTime);
+            String maxThreadStopTime = maxTimeThreadStopped(parsedLogsWithTime);
+
+            // Generate and save the CSV file
+            String csvFileFolderName = FileUtils.getFileNameWithoutExtension(fileName);
+            String baseUrl = "http://localhost:8089";
+            String downloadUrl = baseUrl + "/api/files/download-csv?fileName=" + csvFileFolderName;
+
+            // Create JSON response object
+            response = new LogProcessingResponse(
+                    fileName,
+                    lineCount,
+                    maxThreadExecution,
+                    mostFrequentMessage,
+                    maxThreadStopTime,
+                    "Log file processed successfully.",
+                    downloadUrl);
+
         } catch (Exception e) {
-            System.err.println("Error processing log file: " + e);
-            result.append("Error processing log file: ").append(e.getMessage()).append("\n");
+            log.error("Error processing log file: " + e);
+            response.setMessage("Error processing log file: " + e.getMessage());
+            response.setFileName(fileName);
         }
-        return result.toString();
+        log.info("Log file processed successfully: " + fileName);
+        return response;
     }
 
     private Dataset<LogEntry> parseLogEntries(Dataset<String> logData) {
+        log.info("Inside parseLogEntries method");
         // Use a static inner class for the FlatMapFunction to ensure it is serializable
         Dataset<LogEntry> parsedLogs = logData.flatMap(new LogEntryFlatMapFunction(), Encoders.bean(LogEntry.class));
         return parsedLogs;
@@ -112,7 +133,7 @@ public class SparkFileProcessorService {
                     previousEntry = entry;
                 } catch (Exception e) {
                     // Handle any parsing exceptions if needed
-                    System.err.println("Error parsing line: " + line);
+                    log.error("Error parsing line: " + line);
                 }
             } else if (previousEntry != null) {
                 previousEntry.setMessage(previousEntry.getMessage() + "\n" + line.replaceAll("\"", ""));
@@ -128,27 +149,26 @@ public class SparkFileProcessorService {
      * @return
      */
     private String maxTimeTakingThread(Dataset<Row> parsedLogsWithTime) {
+        log.info("Inside maxTimeTakingThread method");
         // Group by thread and sum the total time difference for each thread
         Dataset<Row> totalTimeDiffByThread = parsedLogsWithTime
                 .groupBy("thread")
                 .agg(functions.sum("time_diff_ms").alias("total_time_diff_ms"));
-    
+
         // Get the thread with the maximum total time difference
         Row maxRow = totalTimeDiffByThread
                 .orderBy(functions.desc("total_time_diff_ms")) // Sort in descending order
                 .first(); // Take the first row (thread with max total time)
-    
+
         // Extract thread name and total time difference
         String thread = maxRow.getAs("thread");
         double maxTimeDiffValue = maxRow.getAs("total_time_diff_ms");
-    
+
         // Print and return the result
-        String result = "Thread with maximum total time difference: " + thread + 
-                        " with total time taken: " + maxTimeDiffValue + " ms";
-        System.out.println(result);
+        String result = "Thread with maximum total time difference: " + thread +
+                " with total time taken: " + maxTimeDiffValue + " ms";
         return result;
     }
-    
 
     /**
      * Find the log message that is printed maximum times
@@ -157,6 +177,7 @@ public class SparkFileProcessorService {
      * @return
      */
     private String maxNumberOfTimesSameLogMessage(Dataset<Row> parsedLogsWithTime) {
+        log.info("Inside maxNumberOfTimesSameLogMessage method");
         // Find the maximum number of times the same log message is printed
         Dataset<Row> maxLogMessageCount = parsedLogsWithTime.groupBy("message")
                 .agg(functions.count("message").alias("count"))
@@ -166,12 +187,13 @@ public class SparkFileProcessorService {
         Row maxRow = maxLogMessageCount.first();
         String message = maxRow.getAs("message");
         long count = maxRow.getAs("count");
-        System.out.println("Log message printed maximum times: " + message + " with count: " + count);
+        log.debug("Log message printed maximum times: " + message + " with count: " + count);
         return "Log message printed maximum times: " + message + " with count: " + count;
     }
 
     // max time a thread stopped at a line: line number & time:
     private String maxTimeThreadStopped(Dataset<Row> parsedLogsWithTime) {
+        log.info("Inside maxTimeThreadStopped method");
         // Find the row with the maximum time difference
         Dataset<Row> maxTimeDiffRow = parsedLogsWithTime
                 .orderBy(functions.col("time_diff_ms").desc()) // Sort descending to get the max first
@@ -187,8 +209,7 @@ public class SparkFileProcessorService {
 
         // Print and return the result
         String result = "Maximum time a thread stopped at a line: " + lineNumber +
-                " with time difference: " + maxTimeDiffValue +" ms";
-        System.out.println(result);
+                " with time difference: " + maxTimeDiffValue + " ms";
         return result;
     }
 
@@ -203,6 +224,7 @@ public class SparkFileProcessorService {
      */
     private Dataset<Row> calculateThreadTimeDiffForEachThread(Dataset<LogEntry> parsedLogs, SparkSession spark,
             String filePath) {
+        log.info("Inside calculateThreadTimeDiffForEachThread method");
         // Convert timestamp to a proper format
         Dataset<Row> parsedLogsWithTime = parsedLogs.withColumn("timestamp_initial", parsedLogs.col("timestamp"))
                 .withColumn("timestamp", functions.to_timestamp(parsedLogs.col("timestamp"), "MM-dd-yy HH:mm:ss:SSS"));
@@ -232,9 +254,7 @@ public class SparkFileProcessorService {
                         """);
 
         // Save the result to a file with headers and quote all fields
-        result.write().option("header", "true").option("quoteAll", "true").format("csv")
-                .save(FileUtils.getFileNameWithoutExtension(filePath));
-
+        FileUtils.saveFileToCSV(result, FileUtils.getFileNameWithoutExtension(filePath));
         return parsedLogsWithTime;
     }
 

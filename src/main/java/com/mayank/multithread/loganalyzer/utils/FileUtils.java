@@ -3,6 +3,9 @@ package com.mayank.multithread.loganalyzer.utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+
 public final class FileUtils {
     private FileUtils() {
         // Prevent instantiation
@@ -34,6 +37,15 @@ public final class FileUtils {
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
         return now.format(formatter);
+    }
+
+    public static void saveFileToCSV(Dataset<Row> dataset, String filePath) {
+        dataset.coalesce(1).write()
+                .option("header", "true")
+                .option("quoteAll", "true")
+                .option("delimiter", ",")
+                .mode("overwrite")
+                .csv(filePath);
     }
 
 }
