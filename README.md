@@ -25,10 +25,10 @@ The **Multithread Log Analyzer** is a Spring Boot-based application designed to 
 
 ## API Endpoints
 
-- **Upload Log File:** `POST /logs/upload`
+- **Upload Log File:** `POST api/logs/upload`
 
-- **Process Log File:** `POST /logs/process`
+- **Process Log File:** `GET api/logs/process`
 
-- **Download Processed CSV:** `GET /logs/download-csv`
+- **Download Processed CSV:** `GET api/logs/download-csv`
 
 
